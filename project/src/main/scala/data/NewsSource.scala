@@ -21,8 +21,11 @@ object NewsSource {
         .option("inferSchema", "true")
         .load(filePath)
 
-
-    df
+      def clean = udf{s :String =>
+        s.replaceAll("[/]","")
+      }
+    
+    df.withColumn("news",clean(col("_c4")) )
     }
 
   

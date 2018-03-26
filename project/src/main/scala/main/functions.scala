@@ -82,7 +82,7 @@ object functions {
    */
   def ssplit = udf { document: String =>
     //new Document(document).sentences().asScala.map(_.text())
-    document.split("[.?\n!]").toList
+    document.split("[.?\n!:]").toList
   }
 
   /**

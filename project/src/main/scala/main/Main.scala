@@ -33,9 +33,9 @@ object Main extends App{
       println("Please add the path of files as argument")
       //return
     }
-    val news_input_path = "./data/spon-20150601_20150701.csv"//args(0)//
+    val news_input_path = "J:/ba/news-2016/spon-2016*"//args(0)//
     val dic_input_path = "./data/country_2.csv"//args(1)//
-    val output_path =""//args(2)// 
+    val output_path ="./data/allEn2016/all"//args(2)// 
 
     val conf = new SparkConf().setAppName("nlpDemo").setMaster("local[*]")
     val sc = new SparkContext(conf)
@@ -48,13 +48,24 @@ object Main extends App{
     val country_list = CountrySource(sc,dic_input_path)//.rdd.map(x=> (x.getInt(1),x.getString(0))).lookup
 
     
-    def colAdd = udf{(a:WrappedArray[String], b: String) =>
+    def colAddString = udf{(a:WrappedArray[String], b: String) =>
       val slist = ListBuffer[String]()
       for(x <- a){
         slist += x
         
       }
       slist += b.toLowerCase
+      slist
+    }
+    
+    def colAddStringList = udf{(a:WrappedArray[String], b: WrappedArray[String]) =>
+      val slist = ListBuffer[String]()
+      for(x <- a){
+        slist += x    
+      }
+      for(x <- b){
+        slist += x    
+      }
       slist
     }
     
@@ -76,7 +87,7 @@ object Main extends App{
     }
     val country_dic = 
     country_list
-    .select('Country, colAdd('filtered_w, 'Country).as('all))
+    .select('Country, colAddString('filtered_w, 'Country).as('all))
     .select('Country, explode('all).as('exp))
     .rdd.map(x => (x.getString(1), x.getString(0))).collect.toMap
 
@@ -87,14 +98,14 @@ object Main extends App{
         val options = country_dic.get(w)
         val suffix = List("e", "er", "en", "es", "s", "ern", "nen")
         if(!options.isEmpty){
-          slist += options.head
+          slist += options.head+"&&LOC"
         }
         else{
           for(sfx <- suffix){
             if(w.endsWith(sfx)){
               val s_options = country_dic.get(w.dropRight(sfx.length))
               if(!s_options.isEmpty)
-                slist += s_options.head
+                slist += s_options.head+"&&LOC"
             }
           }
         }
@@ -108,19 +119,49 @@ object Main extends App{
         rt = dic.lookup(s)(0)
       rt
     }
-    
+    def lineSummary = udf{(title: String, time: String, a:WrappedArray[String], b: WrappedArray[String],  c: WrappedArray[String]) =>
+      var slist = ""
+      for(x <- a){
+        slist = slist +"\t"+x.split("&&")(0) 
+        slist = slist + "&&" +title.hashCode + "&&" + time
+      }
+      for(x <- b){
+         slist = slist +"\t"+x.split("&&")(0)
+         slist = slist +"&&" + title.hashCode + "&&" + time
+      }
+      for(x <- c){
+         slist = slist +"\t"+x.split("&&")(0)
+         slist = slist + "&&" +title.hashCode + "&&" + time
+      }
+      slist
+    }    
 
     //.foreach(println)
       //.select('Country, 'exp, explode('Adjective))
     //df.select('Title).show
     val output = df
-    .select('_c0,'_c3, explode(ssplit('_c4)).as('sen))
-    .select('_c0,'_c3, 'sen, tokenize('sen).as('words), ner('sen).as('ner))
-    .select(toHash('_c0).as('title_hash), ner('_c0).as('title_ner), suffix_s('ner).as('ref))
-    .select('title_hash,'title_ner, 'ref, udfCountryLemma('ref).as('long))
+    .select('_c0, '_c3, explode(ssplit('news)).as('sen))
+    .select('_c0, '_c3, 'sen, tokenize('sen).as('words), ner('sen).as('ner))
+    .select('_c0,  '_c3, ner('_c0).as('title_ner), suffix_s('ner).as('ref))
+    .select('_c0, '_c3, suffix_s('title_ner).as('title_ref), 'ref, udfCountryLemma('ref).as('long))
+    .select(lineSummary('_c0, '_c3, 'title_ref, 'ref ,'long))
+  //  df.show(100)
+   // df.rdd.map(x => (x.getString(0),x.getString(4))).filter(_._2.length==0).foreach(println)
+
     
-    //output.rdd.saveAsTextFile(output_path)
-    output.show(125,false)
+    output.rdd
+    .map(x => (x.getString(0)))
+    .flatMap(_.split("\t"))
+    .filter(_.length>0)
+   // .foreach(println)
+    .saveAsTextFile(output_path)
+    //.foreach(println)
+    //.map(x=>(x.split("&&")(0),(x.split("&&")(1).toInt, x.split("&&")(2).toLong)))
+    //.filter(_._1.startsWith("Ungewöhnliche Reise-Apps"))
+    //.reduceByKey((x1, x2) => (x1 ++ x2))
+    //.map(x => (x._1, x._2.distinct))
+    //.foreach(println)
+    //output.show(125,false)
     
     
     
